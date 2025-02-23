@@ -50,8 +50,8 @@ class Perplexity:
             model,
             tokenizer,
             device,
-            use_chat_template: True,
             generation_config: None | GenerationConfig,
+            use_chat_template: bool = True,
             batch_size: int = 1,
     ):
         self.model = model
