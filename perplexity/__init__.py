@@ -50,7 +50,7 @@ class Perplexity:
             model,
             tokenizer,
             device,
-            use_chat_template: bool,
+            use_chat_template: True,
             generation_config: None | GenerationConfig,
             batch_size: int = 1,
     ):
@@ -109,7 +109,7 @@ class Perplexity:
             return
         self.tokenizer.chat_template = DEFAULT_CHAT_TEMPLATE
 
-    def generate_text_with_chat_template(self, prompts):
+    def generate_text_with_chat_template(self, prompts) -> list[str]:
         pattern = r"```python\n(.*?)\n```"
         if self.generation_pipeline is None:
             self.generation_pipeline = pipeline(
@@ -173,90 +173,26 @@ class Perplexity:
 
         return responses
 
-    def compute_perplexity(self, prompts: list[str]):
-        ppls = []
+    def generate_text_and_compute_perplexity(self, prompts: list[str]):
         # get predictions one by one
         if self.use_chat_template:
             predictions = self.generate_text_with_chat_template(prompts)
         else:
+            predictions = []
             for prompt in tqdm(prompts, desc="Generating predictions for the prompts"):
-                predictions = []
-
                 predictions.append(
                     self.generate_text(prompt)
                 )  # containes prompt + generated_text
 
-        for start_index in tqdm(
-                range(0, len(predictions), 1), desc="Calculating perplexity"
-        ):
-            end_index = min(start_index + self.batch_size, len(predictions))
-            batch_predictions = predictions[start_index:end_index]
-            batch_prompts = prompts[start_index:end_index]
+        results = self._compute(prompts, predictions, add_start_token=True)
 
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-            encoded_batch = self.tokenizer(
-                batch_predictions,
-                add_special_tokens=False,
-                padding=True,
-                truncation=False,
-                return_tensors="pt",
-                return_attention_mask=True,
-            ).to(self.device)
-
-            input_ids = encoded_batch["input_ids"]
-            attention_mask = encoded_batch["attention_mask"]
-
-            with torch.no_grad():
-                logits = self.model(input_ids, attention_mask=attention_mask).logits
-
-            # Filter the tokens that has a probability higher than a threshold
-            logits, input_ids, attention_mask = self._filter_on_threshold(
-                logits, input_ids, attention_mask
-            )
-
-            for i in range(len(batch_predictions)):
-                # Calculate the length of the prompt for each example
-                prompt_length = len(
-                    self.tokenizer.encode(batch_prompts[i], add_special_tokens=False)
-                )
-
-                # Shift logits and labels to exclude the prompt
-                shift_logits = logits[i, prompt_length:-1, :].contiguous()
-                shift_labels = input_ids[i, prompt_length + 1:].contiguous()
-                shift_attention_mask = attention_mask[
-                                       i, prompt_length + 1:
-                                       ].contiguous()
-
-                # Ensure at least one token remains for perplexity calculation
-                if shift_labels.size(0) > 0:
-                    # Flatten logits and labels to match shapes
-                    flat_logits = shift_logits.view(
-                        -1, shift_logits.size(-1)
-                    )  # (total_tokens, vocab_size)
-                    flat_labels = shift_labels.view(-1)  # (total_tokens)
-
-                    # Calculate loss for the flattened logits and labels
-                    loss = torch.nn.functional.cross_entropy(
-                        flat_logits, flat_labels, reduction="none"
-                    )
-
-                    # Apply attention mask to the loss
-                    masked_loss = loss * shift_attention_mask.view(-1)
-
-                    # Calculate perplexity
-                    perplexity = torch.exp(
-                        masked_loss.sum() / shift_attention_mask.sum()
-                    )
-                    ppls.append(perplexity.item())
-
-            gc.collect()  # Collect garbage at the end of each batch
-            torch.cuda.empty_cache()
-
-            return {
-                "prompts": prompts,
-                "predictions": predictions,
-                "perplexities": ppls,
-            }
+        return {
+            "prompts": prompts,
+            "predictions": predictions,
+            "perplexities": results["perplexities"],
+            "mean_perplexity": results["mean_perplexity"],
+            "probs": results["probs"],
+        }
 
     def to_tokens_and_probs(self, input_texts: list[str], as_log_probs: bool = False) -> list[list[tuple[str, float]]]:
         input_ids = self.tokenizer(input_texts, padding=True, return_tensors="pt").input_ids
@@ -280,16 +216,17 @@ class Perplexity:
             batch.append(text_sequence)
         return batch
 
-    def _filter_on_threshold(self, logits, input_ids, attention_mask, threshold: float) -> tuple[
-        Tensor, Tensor, Tensor]:
+    def _filter_on_threshold(self, logits, input_ids, attention_mask, threshold: float) -> tuple[tuple[
+        Tensor, Tensor, Tensor], list[float] | None]:
         """
         Filter the tokens that has a probability higher than a threshold
         Args:
         input (Tensor): the input tensor
         target (Tensor): the target tensor
         Returns:
-        Tuple[Tensor, Tensor]: the filtered input and target tensors
+        tuple: tuple of filtered logits, filtered input_ids, filtered attention_mask and the probabilities of the generated tokens
         """
+        probs_collection = []
         probs = torch.softmax(logits, dim=-1).detach()
 
         # collect the probability of the generated token -- probability at index 0 corresponds to the token at index 1
@@ -301,33 +238,29 @@ class Perplexity:
 
         filtered_input_ids = []
         filtered_logits = []
+        filtered_attention_mask = []
         for input_sentence, input_probs, mask, logit in zip(input_ids, gen_probs, attention_mask, logits):
             # For each input sentence get the tokens, logits filter the tokens that has a probability higher than a threshold
             input_ids_masked = input_sentence[mask == 1]
             logits_masked = logit[mask == 1]
             probs_masked = input_probs[mask == 1]
+            mask = mask[mask == 1]
 
             # Filter the tokens that has a probability lower than a threshold
             filtered_input_ids.append(input_ids_masked[probs_masked < threshold])
             filtered_logits.append(logits_masked[probs_masked < threshold])
+            filtered_attention_mask.append(mask[probs_masked < threshold])
 
-        # add the filtered_input_ids and filtered_logits to have the same shape as the input_ids and logits
-        # filtered_input_ids has shape (batch_size, num_tokens) I need to add the padding tokens so that it has the same shape as input_ids
-        # filtered_logits has shape (batch_size, num_tokens, vocab_size) I need to add the padding tokens so that it has the same shape as logits
-        return self._pad_tensors(filtered_logits, filtered_input_ids, attention_mask)
-        # max_len = max([len(input_sentence) for input_sentence in filtered_input_ids])
-        # new_attention_mask = []
-        # for i in range(len(filtered_input_ids)):
-        #     num_pad = max_len - len(filtered_input_ids[i])
-        #     new_attention_mask.append(
-        #         torch.cat([torch.ones_like(filtered_input_ids[i]), torch.zeros(num_pad, dtype=torch.long)]))
-        #     filtered_input_ids[i] = torch.cat([filtered_input_ids[i], torch.full((num_pad,), 0, dtype=torch.long)])
-        #     filtered_logits[i] = torch.cat(
-        #         [filtered_logits[i], torch.full((num_pad, logits.shape[-1]), -100, dtype=torch.float32)])
-        # return torch.stack(filtered_logits), torch.stack(filtered_input_ids), torch.stack(new_attention_mask)
+            # collect the probabilities of the filtered tokens
+            probs_collection += probs_masked.tolist()
+
+        # filtered_input_ids has shape (batch_size, num_tokens), add the padding tokens so that it has the same shape as input_ids
+        # filtered_logits has shape (batch_size, num_tokens, vocab_size), add the padding tokens so that it has the same shape as logits
+        return self._pad_tensors(filtered_logits, filtered_input_ids, filtered_attention_mask), probs_collection
 
     def _compute(self, prompts: list[str] | None, predictions: list[str], add_start_token: bool):
         loss_fct = CrossEntropyLoss(reduction="none")
+        probs = []
         ppls = []
         for start_index in logging.tqdm(range(0, len(predictions), self.batch_size)):
             end_index = min(start_index + self.batch_size, len(predictions))
@@ -380,7 +313,8 @@ class Perplexity:
                 out_logits, labels, attn_mask = self._pad_tensors(shifted_logits, shifted_labels, shifted_attn_mask)
 
             # Filter the tokens that has a probability higher than a threshold
-            out_logits, labels, attn_mask = self._filter_on_threshold(out_logits, labels, attn_mask, 0.99)
+            (out_logits, labels, attn_mask), generated_probs = self._filter_on_threshold(out_logits, labels, attn_mask,
+                                                                                         0.99)
 
             perplexity_batch = torch.exp(
                 (loss_fct(out_logits.transpose(1, 2), labels) * attn_mask).sum(1)
@@ -388,17 +322,32 @@ class Perplexity:
             )
             ppls += perplexity_batch.tolist()
 
-        return {"perplexities": ppls, "mean_perplexity": np.mean(ppls)}
+            # collect the token probabilities
+            probs += generated_probs
 
+            # Collect garbage at the end of each batch
+            gc.collect()
+            torch.cuda.empty_cache()
 
-    def _pad_tensors(self, logits: list[Tensor], labels:list[Tensor], attn_mask:list[Tensor]) -> tuple[Tensor, Tensor, Tensor]:
+        return {"perplexities": ppls, "mean_perplexity": np.mean(ppls), "probs": probs}
+
+    def _pad_tensors(self, logits: list[Tensor], labels: list[Tensor], attn_mask: list[Tensor]) -> tuple[
+        Tensor, Tensor, Tensor]:
+        """
+        Pad the logits and labels to have the same shape after filtering
+        :param logits: list of logits
+        :param labels: list of labels
+        :param attn_mask:  list of attention masks
+        :return: padded logits, padded labels, padded attention masks as tuple of tensors
+        """
         max_len = max([len(label) for label in labels])
         new_attn_mask = []
         for i in range(len(labels)):
-            num_pad = max_len - len(labels[i])
+            num_pad = max_len - attn_mask[i].sum().detach().item()
             new_attn_mask.append(
-                torch.cat([torch.ones_like(labels[i]), torch.zeros(num_pad, dtype=torch.long)]))
-            labels[i] = torch.cat([labels[i], torch.full((num_pad,), self.tokenizer.pad_token, dtype=torch.long)])
+                torch.cat([torch.ones_like(attn_mask[i][attn_mask[i] == 1]), torch.zeros(num_pad, dtype=torch.long)]))
+            labels[i] = torch.cat(
+                [labels[i][attn_mask[i] == 1], torch.full((num_pad,), self.tokenizer.pad_token_id, dtype=torch.long)])
             logits[i] = torch.cat(
-                [logits[i], torch.full((num_pad, logits[0].shape[-1]), 0, dtype=torch.float32)])
+                [logits[i][attn_mask[i] == 1, :], torch.full((num_pad, logits[0].shape[-1]), 0, dtype=torch.float32)])
         return torch.stack(logits), torch.stack(labels), torch.stack(new_attn_mask)
