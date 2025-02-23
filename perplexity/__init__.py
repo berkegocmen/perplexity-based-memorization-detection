@@ -258,7 +258,7 @@ class Perplexity:
         # filtered_logits has shape (batch_size, num_tokens, vocab_size), add the padding tokens so that it has the same shape as logits
         return self._pad_tensors(filtered_logits, filtered_input_ids, filtered_attention_mask), probs_collection
 
-    def _compute(self, prompts: list[str] | None, predictions: list[str], add_start_token: bool = True) -> dict:
+    def compute(self, prompts: list[str] | None, predictions: list[str], add_start_token: bool = True) -> dict:
         loss_fct = CrossEntropyLoss(reduction="none")
         probs = []
         ppls = []
