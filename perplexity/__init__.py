@@ -302,7 +302,7 @@ class Perplexity:
                 shifted_logits = []
                 shifted_labels = []
                 shifted_attn_mask = []
-                for i in range(start_index, end_index):
+                for i in range(self.batch_size):
                     prompt_length = len(
                         self.tokenizer.encode(prompts[i], add_special_tokens=False)
                     )
