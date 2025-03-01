@@ -1,46 +1,9 @@
 import numpy as np
 from torch import Tensor
-from transformers import GenerationConfig, pipeline
 import torch
 from torch.nn import CrossEntropyLoss
 import gc
-from torch.utils.data import Dataset
-import re
 from evaluate import logging
-
-DEFAULT_CHAT_TEMPLATE = """{{ bos_token }} You are an exceptionally intelligent coding assistant that consistently delivers accurate and reliable responses to user instructions.
-
-### Instruction
-Complete the function in the code snippet:
-python
-```
-{{ messages }}
-```
-
-### Response
-Here's how you can complete the function:
-```python
-{{ messages }}
-"""
-
-
-class ListDataset(Dataset):
-    def __init__(self, original_list):
-        self.original_list = original_list
-
-    def __len__(self):
-        return len(self.original_list)
-
-    def __getitem__(self, i):
-        return self.original_list[i]
-
-    def __iter__(self):
-        """Returns an iterator over the dataset."""
-        for item in self.original_list:
-            yield item
-
-    def __repr__(self):
-        return repr(self.original_list)
 
 
 class Perplexity:
@@ -48,9 +11,7 @@ class Perplexity:
             self,
             model,
             tokenizer,
-            device,
-            generation_config: None | GenerationConfig,
-            use_chat_template: bool = True,
+            device: str | None = None,
             batch_size: int = 1,
     ):
         self.model = model
@@ -69,129 +30,8 @@ class Perplexity:
         else:
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        self.generation_config = (
-            generation_config
-            if generation_config
-            else GenerationConfig(
-                max_new_tokens=512,  # Maximum number of tokens to generate
-                pad_token_id=tokenizer.eos_token_id,
-                tokenizer=tokenizer,
-                add_special_tokens=False,
-                use_cache=False,
-            )
-        )
-
         self.batch_size = batch_size
         self.loss_fct = CrossEntropyLoss(reduction="none")
-        self.generation_pipeline = None
-        self.apply_chat_template()
-        self.use_chat_template = use_chat_template
-
-    def generate_text(self, prompt):
-        # Tokenize and get both input_ids and attention_mask
-        encodings = self.tokenizer(
-            prompt, return_tensors="pt", return_attention_mask=True
-        ).to(self.device)
-        input_ids = encodings["input_ids"]
-        attention_mask = encodings["attention_mask"]
-        outputs = self.model.generate(
-            input_ids,
-            attention_mask=attention_mask,
-            generation_config=self.generation_config,
-            tokenizer=self.tokenizer,
-        )
-        return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-
-    def apply_chat_template(self, template: str | None = None):
-        if template:
-            self.tokenizer.chat_template = template
-            return
-        self.tokenizer.chat_template = DEFAULT_CHAT_TEMPLATE
-
-    def generate_text_with_chat_template(self, prompts: list[str]) -> list[str]:
-        pattern = r"```python\n(.*?)\n```"
-        if self.generation_pipeline is None:
-            self.generation_pipeline = pipeline(
-                model=self.model,
-                task="text-generation",
-                device_map="auto",
-                tokenizer=self.tokenizer,
-                framework="pt",
-            )
-
-        teminators = [
-            self.generation_pipeline.tokenizer.eos_token_id,
-            self.generation_pipeline.tokenizer.convert_tokens_to_ids("###"),
-        ]
-
-        instructions = [
-            self.generation_pipeline.tokenizer.apply_chat_template(
-                prompt, tokenize=False, add_generation_prompt="True"
-            )
-            for prompt in prompts
-        ]
-
-        results = []
-        responses = []
-
-        for idx, result in enumerate(
-                logging.tqdm(
-                    self.generation_pipeline(
-                        ListDataset(instructions),
-                        generation_config=self.generation_config,
-                        eos_token_id=teminators,
-                        pad_token_id=self.generation_pipeline.tokenizer.eos_token_id,
-                        batch_size=self.batch_size,
-                    ),
-                    desc="Generating text",
-                )
-        ):
-            results.append(result)
-            print("Generated Text --->")
-            matches = re.findall(
-                pattern,
-                result[0]["generated_text"].split("### Response")[-1],
-                re.DOTALL,
-            )
-            if len(matches) > 0:
-                responses.append(matches[0])
-                print(matches[0])
-            else:
-                responses.append(
-                    result[0]["generated_text"].split(
-                        "### Response\nHere's how you can complete the function:\n```python"
-                    )[-1]
-                )
-                print(
-                    result[0]["generated_text"].split(
-                        "### Response\nHere's how you can complete the function:\n```python"
-                    )[-1]
-                )
-            gc.collect()  # Collect garbage at the end of each batch
-            torch.cuda.empty_cache()
-
-        return responses
-
-    def generate_text_and_compute_perplexity(self, prompts: list[str]):
-        # get predictions one by one
-        if self.use_chat_template:
-            predictions = self.generate_text_with_chat_template(prompts)
-        else:
-            predictions = []
-            for prompt in logging.tqdm(prompts, desc="Generating predictions for the prompts"):
-                predictions.append(
-                    self.generate_text(prompt)
-                )  # containes prompt + generated_text
-
-        results = self.compute(prompts, predictions, add_start_token=True)
-
-        return {
-            "prompts": prompts,
-            "predictions": predictions,
-            "perplexities": results["perplexities"],
-            "mean_perplexity": results["mean_perplexity"],
-            "probs": results["probs"],
-        }
 
     def compute(self, prompts: list[str] | None, predictions: list[str], add_start_token: bool = True,
                 thresholds: list | None = None) -> dict:
@@ -211,7 +51,7 @@ class Perplexity:
         loss_fct = CrossEntropyLoss(reduction="none")
         col = {}
         for val in thresholds:
-            col[str(val)] = {"total_tokens": [], "filtered_tokens": [], "ppls": [], "probs": []}
+            col[str(val)] = {"total_tokens": [], "filtered_tokens": [], "ppls": [], "probs": [], "longest_sequences": []}
 
         for start_index in logging.tqdm(range(0, len(predictions), self.batch_size)):
             end_index = min(start_index + self.batch_size, len(predictions))
@@ -231,17 +71,16 @@ class Perplexity:
             # check that each input is long enough:
             if add_start_token:
                 assert torch.all(torch.ge(attn_mask.sum(1), 1)), "Each input text must be at least one token long."
+                bos_tokens_tensor = torch.tensor([[self.tokenizer.bos_token_id]] * encoded_batch.size(dim=0)).to(
+                    self.device)
+                encoded_batch = torch.cat([bos_tokens_tensor, encoded_batch], dim=1)
+                attn_mask = torch.cat(
+                    [torch.ones(bos_tokens_tensor.size(), dtype=torch.int64).to(self.device), attn_mask], dim=1
+                )
             else:
                 assert torch.all(
                     torch.ge(attn_mask.sum(1), 2)
                 ), "When add_start_token=False, each input text must be at least two tokens long. Run with add_start_token=True if inputting strings of only one token, and remove all empty input strings."
-
-            bos_tokens_tensor = torch.tensor([[self.tokenizer.bos_token_id]] * encoded_batch.size(dim=0)).to(
-                self.device)
-            encoded_batch = torch.cat([bos_tokens_tensor, encoded_batch], dim=1)
-            attn_mask = torch.cat(
-                [torch.ones(bos_tokens_tensor.size(), dtype=torch.int64).to(self.device), attn_mask], dim=1
-            )
 
             labels = encoded_batch
 
@@ -265,16 +104,18 @@ class Perplexity:
 
             # Filter the tokens that has a probability higher than a threshold
             for idx, val in enumerate(thresholds):
-                (out_logits, labels, attn_mask), generated_probs, tt, ft = self._filter_on_threshold(out_logits, labels,
-                                                                                                     attn_mask, val)
-                col[str(val)]["total_tokens"].append(tt)
-                col[str(val)]["filtered_tokens"].append(ft)
+                (out_logits, labels, attn_mask), generated_probs, tt, ft, ls = self._filter_on_threshold(out_logits,
+                                                                                                         labels,
+                                                                                                         attn_mask, val)
+                col[str(val)]["total_tokens"] += tt
+                col[str(val)]["filtered_tokens"] += ft
 
                 perplexity_batch = torch.exp(
                     (loss_fct(out_logits.transpose(1, 2), labels) * attn_mask).sum(1)
                     / attn_mask.sum(1)
                 )
                 col[str(val)]["ppls"] += perplexity_batch.tolist()
+                col[str(val)]["longest_sequences"] += ls
 
                 # collect the token probabilities
                 if idx == 0:
@@ -289,24 +130,29 @@ class Perplexity:
         results = {}
         for val in thresholds:
             results[str(val)] = {"mean_perplexity": np.nanmean(col[str(val)]["ppls"]),
-                                 "fp": sum(col[str(val)]["filtered_tokens"]) / sum(col[str(val)]["total_tokens"]),
+                                 "perplexities": col[str(val)]["ppls"],
+                                 "filtered_token_percentage": sum(col[str(val)]["filtered_tokens"]) / sum(
+                                     col[str(val)]["total_tokens"]),
+                                 "longest_filtered_sequences": col[str(val)]["longest_sequences"],
                                  "probs": col[str(val)]["probs"]}
 
         return results
 
-    def _filter_on_threshold(self, logits, input_ids, attention_mask, threshold: float) -> tuple[
-        tuple[Tensor, Tensor, Tensor], list, int, int]:
+    def _filter_on_threshold(self, logits: Tensor, input_ids: Tensor, attention_mask: Tensor, threshold: float) -> \
+            tuple[
+                tuple[Tensor, Tensor, Tensor], list[float], list[int], list[int], list[int]]:
         """
         Filter the tokens that has a probability higher than a threshold
         :param logits: logits
         :param input_ids: input_ids
         :param attention_mask: attention_mask
         :param threshold: threshold to filter the tokens
-        :return: tuple of filtered logits, filtered input_ids, filtered attention_mask, list of token probabilities, total tokens, filtered tokens
+        :return: tuple of filtered logits, filtered input_ids, filtered attention_mask, list of token probabilities, total tokens, filtered tokens, list of longest filtered sequence
         """
         probs_collection = []
         token_count = []
         filter_count = []
+        longest_filtered_sequences = []
 
         probs = torch.softmax(logits, dim=-1).detach()
 
@@ -328,19 +174,23 @@ class Perplexity:
             mask = mask[mask == 1]
 
             # Filter the tokens that has a probability lower than a threshold
-            filtered_input_ids.append(input_ids_masked[probs_masked < threshold])
-            filtered_logits.append(logits_masked[probs_masked < threshold])
-            filtered_attention_mask.append(mask[probs_masked < threshold])
+            threshold_mask = probs_masked < threshold
+            filtered_input_ids.append(input_ids_masked[threshold_mask])
+            filtered_logits.append(logits_masked[threshold_mask])
+            filtered_attention_mask.append(mask[threshold_mask])
 
             # collect the probabilities of the filtered tokens
             probs_collection += probs_masked.tolist()
             token_count.append(len(input_ids_masked))
-            filter_count.append(len(input_ids_masked) - len(input_ids_masked[probs_masked < threshold]))
+            filter_count.append(len(input_ids_masked) - len(input_ids_masked[threshold_mask]))
+            # count the longest sequence of filtered tokens
+            threshold_mask_str = "".join(map(str, torch.tensor(threshold_mask, dtype=torch.int).tolist()))
+            longest_filtered_sequences.append(max(map(len, threshold_mask_str.split("1"))))
 
         # filtered_input_ids has shape (batch_size, num_tokens), add the padding tokens so that it has the same shape as input_ids
         # filtered_logits has shape (batch_size, num_tokens, vocab_size), add the padding tokens so that it has the same shape as logits
-        return self._pad_tensors(filtered_logits, filtered_input_ids, filtered_attention_mask), probs_collection, sum(
-            token_count), sum(filter_count)
+        return self._pad_tensors(filtered_logits, filtered_input_ids,
+                                 filtered_attention_mask), probs_collection, token_count, filter_count, longest_filtered_sequences
 
     def _pad_tensors(self, logits: list[Tensor], labels: list[Tensor], attn_mask: list[Tensor]) -> tuple[
         Tensor, Tensor, Tensor]:

@@ -1,6 +1,7 @@
 import json
 
 import torch
+from torch.utils.data import Dataset
 
 
 # load data
@@ -32,3 +33,22 @@ def to_tokens_and_probs(model, tokenizer, input_texts: list[str], as_log_probs: 
                 text_sequence.append((tokenizer.decode(token), p.item()))
         batch.append(text_sequence)
     return batch
+
+
+class ListDataset(Dataset):
+    def __init__(self, original_list):
+        self.original_list = original_list
+
+    def __len__(self):
+        return len(self.original_list)
+
+    def __getitem__(self, i):
+        return self.original_list[i]
+
+    def __iter__(self):
+        """Returns an iterator over the dataset."""
+        for item in self.original_list:
+            yield item
+
+    def __repr__(self):
+        return repr(self.original_list)
