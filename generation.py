@@ -9,6 +9,8 @@ from transformers import (
     AutoModelForCausalLM,
     BitsAndBytesConfig,
     AutoTokenizer,
+    PreTrainedTokenizer,
+    PreTrainedModel,
 )
 
 from perplexity.base import GeneratedCode
@@ -31,29 +33,26 @@ Here's how you can complete the function:
 """
 
 
-class CodeGenerator(weave.Model):
+class CodeGenerator:
     model_name: str
     quantization_config: BitsAndBytesConfig | None = None
     generation_config: GenerationConfig
 
     def __init__(
         self,
-        model_name: str,
-        quantization_config: BitsAndBytesConfig,
+        model: PreTrainedModel,
+        tokenizer: PreTrainedTokenizer,
         generation_config: GenerationConfig,
         generation_template: str | None = None,
         batch_size=1,
     ) -> None:
-        super().__init__()
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_name, quantization_config=quantization_config
-        )
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = model
+        self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.tokenizer.padding_side = "left"
         self.generation_config = generation_config
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.genereration_template = generation_template or DEFAULT_CHAT_TEMPLATE
+        self.generation_template = generation_template or DEFAULT_CHAT_TEMPLATE
         self.batch_size = batch_size
 
         # initialize the generation pipeline
@@ -65,7 +64,7 @@ class CodeGenerator(weave.Model):
             framework="pt",
         )
 
-    def generate_code(self, prompt) -> str:
+    def generate_code(self, prompt):
         # Tokenize and get both input_ids and attention_mask
         encodings = self.tokenizer(
             prompt, return_tensors="pt", return_attention_mask=True
@@ -80,7 +79,6 @@ class CodeGenerator(weave.Model):
         )
         return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-    @weave.op(name="generate_code")
     def generate_text_with_chat_template(
         self, prompts: list[str], language: str
     ) -> list[GeneratedCode]:
@@ -89,7 +87,7 @@ class CodeGenerator(weave.Model):
         pattern = rf"```{language}\n(.*?)\n```"
 
         # apply the chat template to the tokenizer and the prompts
-        self.tokenizer.chat_template = self.genereration_template.format(
+        self.tokenizer.chat_template = self.generation_template.format(
             language=language
         )
 
@@ -132,9 +130,7 @@ class CodeGenerator(weave.Model):
             if len(matches) > 0:
                 code = matches[0]
             else:
-                code = response.split(
-                    "Here's how you can complete the function:\n```python"
-                )[-1].lstrip()
+                code = response.split(f"```{language}")[-1].lstrip()
 
             results.append(
                 GeneratedCode(

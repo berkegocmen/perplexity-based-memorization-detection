@@ -1,4 +1,3 @@
-import weave
 from pydantic import BaseModel
 
 

@@ -1,0 +1,3 @@
+prompt,language
+"def hello_world():", "python"
+"puts 'Hello, World!'", "ruby"

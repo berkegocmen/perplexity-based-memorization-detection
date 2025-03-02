@@ -23,6 +23,7 @@ class Perplexity:
                 "gpu",
                 "cpu",
                 "cuda",
+                "mps",
             ], "device should be either gpu or cpu."
             if device == "gpu":
                 device = "cuda"
@@ -44,8 +45,8 @@ class Perplexity:
         Compute the perplexity of the generated text if the prompts of the generated text are given the perplexity computation is done on the generated text
         Else the perplexity computation is done on the prompt + generated text
 
-        :param prompts: prompts
-        :param predictions: predictions
+        :param prompts: prompts used to generate the text if provided the perplexity is computed on the generated text else the perplexity is computed on the prompt + generated text
+        :param predictions: predictions as prompts + generated text to condition on the prompts
         :param add_start_token: if True add the start token to the input text
         :param thresholds: list of thresholds to filter the tokens
         :return: dictionary of results
@@ -163,7 +164,7 @@ class Perplexity:
                 "mean_perplexity": np.nanmean(col[str(val)]["ppls"]),
                 "perplexities": col[str(val)]["ppls"],
                 "filtered_token_percentage": sum(col[str(val)]["filtered_tokens"])
-                / sum(col[str(val)]["total_tokens"]),
+                / (sum(col[str(val)]["total_tokens"]) + 1e-9),
                 "longest_filtered_sequences": col[str(val)]["longest_sequences"],
                 "probs": col[str(val)]["probs"],
             }
