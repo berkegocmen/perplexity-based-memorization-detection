@@ -1,9 +1,9 @@
-import weave
 from pydantic import BaseModel
 
 
 class Prompt(BaseModel):
     pass
+
 
 class GeneratedCode(BaseModel):
     prompt: str
@@ -13,7 +13,3 @@ class GeneratedCode(BaseModel):
     @property
     def complete_code(self):
         return self.prompt + self.generated_code
-
-
-
-

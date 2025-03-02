@@ -2,7 +2,16 @@ import gc
 import re
 
 import torch
-from transformers import pipeline
+import weave
+from transformers import (
+    pipeline,
+    GenerationConfig,
+    AutoModelForCausalLM,
+    BitsAndBytesConfig,
+    AutoTokenizer,
+    PreTrainedTokenizer,
+    PreTrainedModel,
+)
 
 from perplexity.base import GeneratedCode
 from evaluate import logging
@@ -25,14 +34,25 @@ Here's how you can complete the function:
 
 
 class CodeGenerator:
-    def __init__(self, model, tokenizer, generation_config, generation_template: str | None = None, batch_size=1):
+    model_name: str
+    quantization_config: BitsAndBytesConfig | None = None
+    generation_config: GenerationConfig
+
+    def __init__(
+        self,
+        model: PreTrainedModel,
+        tokenizer: PreTrainedTokenizer,
+        generation_config: GenerationConfig,
+        generation_template: str | None = None,
+        batch_size=1,
+    ) -> None:
         self.model = model
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.tokenizer.padding_side = "left"
         self.generation_config = generation_config
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.genereration_template = generation_template or DEFAULT_CHAT_TEMPLATE
+        self.generation_template = generation_template or DEFAULT_CHAT_TEMPLATE
         self.batch_size = batch_size
 
         # initialize the generation pipeline
@@ -59,13 +79,17 @@ class CodeGenerator:
         )
         return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-    def generate_text_with_chat_template(self, prompts: list[str], language: str) -> list[GeneratedCode]:
+    def generate_text_with_chat_template(
+        self, prompts: list[str], language: str
+    ) -> list[GeneratedCode]:
         results = []
         # regex pattern to extract the code from the generated text
-        pattern = fr"```{language}\n(.*?)\n```"
+        pattern = rf"```{language}\n(.*?)\n```"
 
         # apply the chat template to the tokenizer and the prompts
-        self.tokenizer.chat_template = self.genereration_template.format(language=language)
+        self.tokenizer.chat_template = self.generation_template.format(
+            language=language
+        )
 
         teminators = [
             self.generation_pipeline.tokenizer.eos_token_id,
@@ -81,7 +105,8 @@ class CodeGenerator:
         ]
 
         for idx, (result, prompt) in enumerate(
-                zip(logging.tqdm(
+            zip(
+                logging.tqdm(
                     self.generation_pipeline(
                         ListDataset(instructions),
                         generation_config=self.generation_config,
@@ -90,7 +115,9 @@ class CodeGenerator:
                         batch_size=self.batch_size,
                     ),
                     desc="Generating text",
-                ), prompts)
+                ),
+                prompts,
+            )
         ):
             # extract the code from the generated text
             response = result[0]["generated_text"].split("### Response")[-1]
@@ -103,11 +130,13 @@ class CodeGenerator:
             if len(matches) > 0:
                 code = matches[0]
             else:
-                code = response.split(
-                    "Here's how you can complete the function:\n```python"
-                )[-1].lstrip()
+                code = response.split(f"```{language}")[-1].lstrip()
 
-            results.append(GeneratedCode(prompt=prompt, generated_code=code[len(prompt.lstrip()):]))
+            results.append(
+                GeneratedCode(
+                    prompt=prompt, generated_code=code[len(prompt.lstrip()) :]
+                )
+            )
 
             # collect garbage
             gc.collect()
