@@ -178,7 +178,7 @@ class Perplexity:
         attention_mask: Tensor,
         threshold: float,
     ) -> tuple[
-        tuple[Tensor, Tensor, Tensor], list[float], list[int], list[int], list[int]
+        tuple[Tensor, Tensor, Tensor], list[float], list[int], list[int], list[float]
     ]:
         """
         Filter the tokens that has a probability higher than a threshold
@@ -231,7 +231,7 @@ class Perplexity:
                 map(str, torch.tensor(threshold_mask, dtype=torch.int).tolist())
             )
             longest_filtered_sequences.append(
-                max(map(len, threshold_mask_str.split("1")))
+                max(map(len, threshold_mask_str.split("1"))) / len(threshold_mask_str)
             )
 
         # filtered_input_ids has shape (batch_size, num_tokens), add the padding tokens so that it has the same shape as input_ids
