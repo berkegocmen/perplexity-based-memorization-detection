@@ -1,9 +1,8 @@
+import itertools
 import logging
 import os
 
 import pandas as pd
-import seaborn as sns
-from matplotlib import pyplot as plt
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from configuration import ExperimentConfig
@@ -18,13 +17,10 @@ class ExperimentPipeline:
         self.config = ExperimentConfig.from_yaml(path_to_yaml)
 
     def run(self) -> None:
-        logger.info(
-            f"Running experiment {self.config.experiment_name} with model {self.config.model_load.model_name}"
-        )
+        logger.info(f"Running experiment {self.config.experiment_name} with model {self.config.model_load.model_name}")
         logger.info(f"Code generation config: {self.config.code_generation}")
         logger.info(f"Perplexity config: {self.config.perplexity}")
         logger.info(f"Save path: {self.config.save_path}")
-        experiment_results = []
 
         logger.info("Loading the model and tokenizer")
         model = AutoModelForCausalLM.from_pretrained(
@@ -47,42 +43,23 @@ class ExperimentPipeline:
 
             # expected columns in the dataset ["prompt", "language"]
             df = self.config.dataset
+            df["prediction"] = None
+            df["generated_code"] = None
             languages = df["language"].unique()
             for language in languages:
                 logger.info("Generating code for language: {language}")
                 prompts = df[df["language"] == language]["prompt"].tolist()
-                results = generator.generate_text_with_chat_template(
-                    prompts, language=language
-                )
-                experiment_results += [
-                    {
-                        "language": language,
-                        "prompt": result.prompt,
-                        "generated_code": result.generated_code,
-                        "prediction": result.complete_code,
-                    }
-                    for result in results
-                ]
+                results = generator.generate_text_with_chat_template(prompts, language=language)
+
+                for idx, result in zip(df[df["language"] == language].index, results):
+                    assert df.at[idx, "prompt"] == result.prompt
+                    df.at[idx, "prediction"] = result.complete_code
+                    df.at[idx, "generated_code"] = result.generated_code
+            self.config.dataset = df
 
         if self.config.perplexity:
             logger.info("Running perplexity calculation")
             # use the generation results to calculate perplexity if code generation step is run before
-
-            if self.config.code_generation is None:
-                # if code generation step is not run, use the prompts from the dataset
-                # predictions column is mandatory for perplexity calculation prompts can be skipped
-                assert len(experiment_results) == 0
-                experiment_results += [
-                    {"prediction": prediction, "prompt": prompt}
-                    for prediction, prompt in zip(
-                        self.config.dataset["predictions"].tolist(),
-                        (
-                            self.config.dataset["prompts"].tolist()
-                            if "prompts" in self.config.dataset.columns
-                            else [None] * len(self.config.dataset["predictions"])
-                        ),
-                    )
-                ]
 
             perplexity = Perplexity(
                 model=model,
@@ -92,74 +69,88 @@ class ExperimentPipeline:
             )
 
             perplexity_results = perplexity.compute(
-                prompts=[result["prompt"] for result in experiment_results],
-                predictions=[result["prediction"] for result in experiment_results],
+                prompts=self.config.dataset["prompt"].tolist(),
+                predictions=self.config.dataset["prediction"].tolist(),
                 thresholds=self.config.perplexity.thresholds,
             )
 
-            token_probabilities = perplexity_results[
-                f"{self.config.perplexity.thresholds[0]}"
-            ]["probs"]
-            mean_perplexities = []
+            new_columns = list(
+                itertools.chain.from_iterable(
+                    [
+                        [f"{threshold}_perplexity", f"{threshold}_longest_filtered_sequences"]
+                        for threshold in self.config.perplexity.thresholds
+                    ]
+                )
+            ) + ["token_probabilities"]
+
+            # add the columns to the dataset
+            for column in new_columns:
+                self.config.dataset[column] = None
+
             filtered_token_percentages = []
+
             for threshold, results in perplexity_results.items():
-                mean_perplexities.append(results["mean_perplexity"])
                 filtered_token_percentages.append(results["filtered_token_percentage"])
 
-                for item, perp, ls in zip(
-                    experiment_results,
-                    results["perplexities"],
-                    results["longest_filtered_sequences"],
+                for idx, perp, ls in zip(
+                    self.config.dataset.index, results["perplexities"], results["longest_filtered_sequences"]
                 ):
-                    item[f"{threshold}_perplexity"] = perp
-                    item[f"{threshold}_longest_filtered_sequence"] = ls
+                    self.config.dataset.at[idx, f"{threshold}_perplexity"] = perp
+                    self.config.dataset.at[idx, f"{threshold}_longest_filtered_sequence"] = ls
 
-            for item, gp in zip(
-                experiment_results,
-                perplexity_results[str(self.config.perplexity.thresholds[0])][
-                    "sample_probs"
-                ],
+            for idx, gp in zip(
+                self.config.dataset.index, perplexity_results[str(self.config.perplexity.thresholds[0])]["sample_probs"]
             ):
-                item["token_probabilities"] = gp
+                self.config.dataset.at[idx, "token_probabilities"] = gp
+
+            source_filtered_token_percentages = []
+            if "source" in self.config.dataset.columns:
+                source_perplexity_results = perplexity.compute(
+                    prompts=self.config.dataset["prompt"].tolist(),
+                    predictions=self.config.dataset["source"].tolist(),
+                    thresholds=self.config.perplexity.thresholds,
+                )
+
+                new_columns = list(
+                    itertools.chain.from_iterable(
+                        [
+                            [f"{threshold}_source_perplexity", f"{threshold}_source_longest_filtered_sequences"]
+                            for threshold in self.config.perplexity.thresholds
+                        ]
+                    )
+                ) + ["source_token_probabilities"]
+
+                # add the columns to the dataset
+                for column in new_columns:
+                    self.config.dataset[column] = None
+
+                for threshold, results in source_perplexity_results.items():
+                    source_filtered_token_percentages.append(results["filtered_token_percentage"])
+
+                    for idx, perp, ls in zip(
+                        self.config.dataset.index, results["perplexities"], results["longest_filtered_sequences"]
+                    ):
+                        self.config.dataset.at[idx, f"{threshold}_source_perplexity"] = perp
+                        self.config.dataset.at[idx, f"{threshold}_source_longest_filtered_sequence"] = ls
+
+                for idx, gp in zip(
+                    self.config.dataset.index,
+                    source_perplexity_results[str(self.config.perplexity.thresholds[0])]["sample_probs"],
+                ):
+                    self.config.dataset.at[idx, "source_token_probabilities"] = gp
 
             # create the save path if it does not exist
             os.makedirs(self.config.save_path, exist_ok=True)
 
             # save the results
-            df = pd.DataFrame.from_dict(experiment_results)
-            df.to_csv(self.config.save_path + "/results.csv", index=False)
+            self.config.dataset.to_csv(self.config.save_path + "/results.csv", index=False)
             logger.info(f"Results saved at {self.config.save_path}/results.csv")
-
-            # draw plots of probability distribution, mean perplexity and filtered token percentage
-            sns.kdeplot(token_probabilities)
-            plt.xlabel("Token Probability")
-            plt.ylabel("Density")
-            plt.title("Token Probability Distribution")
-            plt.savefig(self.config.save_path + "/token_probability_distribution.png")
-            plt.close()
-
-            if 1.01 in self.config.perplexity.thresholds:
-                # remove the 1.01 threshold if it exists
-                self.config.perplexity.thresholds[
-                    self.config.perplexity.thresholds.index(1.01)
-                ] = 1
-            # plot the mean perplexity by threshold
-            plt.plot(self.config.perplexity.thresholds, mean_perplexities)
-            plt.xlabel("Threshold")
-            plt.ylabel("Mean Perplexity")
-            plt.title("Mean Perplexity by Threshold")
-            plt.gca().invert_xaxis()
-            plt.grid(True)
-            plt.savefig(self.config.save_path + "/mean_perplexity_by_threshold.png")
-            plt.close()
-
-            # plot the filtered token percentage by threshold
-            plt.plot(self.config.perplexity.thresholds, filtered_token_percentages)
-            plt.xlabel("Threshold")
-            plt.ylabel("Filtered Token Percentage")
-            plt.title("Filtered Token Percentage by Threshold")
-            plt.gca().invert_xaxis()
-            plt.grid(True)
-            plt.savefig(
-                self.config.save_path + "/filtered_token_percentage_by_threshold.png"
-            )
+            # save the source_filtered_token_percentages and filtered_token_percentages into a json file
+            if len(source_filtered_token_percentages) != len(filtered_token_percentages):
+                source_filtered_token_percentages = [None] * len(filtered_token_percentages)
+            pd.DataFrame(
+                {
+                    "source_filtered_token_percentages": source_filtered_token_percentages,
+                    "filtered_token_percentages": filtered_token_percentages,
+                }
+            ).to_json(self.config.save_path + "/token_percentages.json")

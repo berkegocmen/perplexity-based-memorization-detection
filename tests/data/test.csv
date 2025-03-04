@@ -1,3 +1,3 @@
-prompt,language
-"def hello_world():", "python"
-"puts 'Hello, World!'", "ruby"
+prompt,language,source
+"def hello_world():",python,"def hello_world():\n    print('Hello, World!')"
+"fn hello_world()",rust,"fn hello_world(){\n println!(\"Hello World!\");\n}"
