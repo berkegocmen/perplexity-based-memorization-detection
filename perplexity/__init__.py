@@ -231,7 +231,8 @@ class Perplexity:
                 map(str, torch.tensor(threshold_mask, dtype=torch.int).tolist())
             )
             longest_filtered_sequences.append(
-                max(map(len, threshold_mask_str.split("1"))) / len(threshold_mask_str)
+                max(map(len, threshold_mask_str.split("1")))
+                / (len(threshold_mask_str) + 1e-9)
             )
 
         # filtered_input_ids has shape (batch_size, num_tokens), add the padding tokens so that it has the same shape as input_ids

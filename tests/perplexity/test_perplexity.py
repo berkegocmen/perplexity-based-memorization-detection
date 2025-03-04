@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
@@ -76,7 +77,7 @@ class TestPerplexity:
         assert filtered_attn_mask.shape == (2, 1)
         assert tt == [2, 2]
         assert ft == [1, 1]
-        assert longest_sequences == [1, 1]
+        assert longest_sequences == pytest.approx([0.5, 0.5])
 
     def test_compute_runs_without_error(self):
         # initialize mock model and tokenizer
