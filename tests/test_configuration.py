@@ -16,7 +16,7 @@ class TestConfiguration:
 
         assert isinstance(configuration.model_load, ModelLoadConfig)
         assert configuration.model_load.quantization_config is None
-        assert configuration.model_load.model_name == "codeparrot/codeparrot"
+        assert configuration.model_load.model_name == "bigcode/tiny_starcoder_py"
 
         assert isinstance(configuration.code_generation, CodeGenerationConfig)
         assert configuration.code_generation.batch_size == 1

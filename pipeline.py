@@ -76,7 +76,11 @@ class ExperimentPipeline:
                     {"prediction": prediction, "prompt": prompt}
                     for prediction, prompt in zip(
                         self.config.dataset["predictions"].tolist(),
-                        self.config.dataset["prompts"].tolist(),
+                        (
+                            self.config.dataset["prompts"].tolist()
+                            if "prompts" in self.config.dataset.columns
+                            else [None] * len(self.config.dataset["predictions"])
+                        ),
                     )
                 ]
 
@@ -109,6 +113,14 @@ class ExperimentPipeline:
                 ):
                     item[f"{threshold}_perplexity"] = perp
                     item[f"{threshold}_longest_filtered_sequence"] = ls
+
+            for item, gp in zip(
+                experiment_results,
+                perplexity_results[str(self.config.perplexity.thresholds[0])][
+                    "sample_probs"
+                ],
+            ):
+                item["token_probabilities"] = gp
 
             # create the save path if it does not exist
             os.makedirs(self.config.save_path, exist_ok=True)

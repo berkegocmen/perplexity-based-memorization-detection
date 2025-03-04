@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
@@ -69,6 +70,7 @@ class TestPerplexity:
             tt,
             ft,
             longest_sequences,
+            gp,
         ) = perp._filter_on_threshold(logits, labels, attn_mask, threshold)
 
         assert filtered_logits.shape == (2, 1, 5)
@@ -76,7 +78,9 @@ class TestPerplexity:
         assert filtered_attn_mask.shape == (2, 1)
         assert tt == [2, 2]
         assert ft == [1, 1]
-        assert longest_sequences == [1, 1]
+        assert longest_sequences == pytest.approx([0.5, 0.5])
+        assert isinstance(gp, list)
+        assert len(gp) == 2
 
     def test_compute_runs_without_error(self):
         # initialize mock model and tokenizer
@@ -101,3 +105,4 @@ class TestPerplexity:
         assert type(results["1.01"]["filtered_token_percentage"]) == float
         assert len(results["1.01"]["longest_filtered_sequences"]) == 3
         assert type(results["1.01"]["probs"]) == list
+        assert len(results["1.01"]["sample_probs"]) == 3
