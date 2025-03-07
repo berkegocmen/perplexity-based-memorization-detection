@@ -214,7 +214,7 @@ class Perplexity:
             token_count.append(len(input_ids_masked))
             filter_count.append(len(input_ids_masked) - len(input_ids_masked[threshold_mask]))
             # count the longest sequence of filtered tokens
-            threshold_mask_str = "".join(map(str, torch.tensor(threshold_mask, dtype=torch.int).tolist()))
+            threshold_mask_str = "".join(map(str, threshold_mask.int().tolist()))
             longest_filtered_sequences.append(
                 max(map(len, threshold_mask_str.split("1")))
                 / (len(threshold_mask_str) + (1e-9 if len(threshold_mask_str) == 0 else 0))
