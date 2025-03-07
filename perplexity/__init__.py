@@ -61,7 +61,6 @@ class Perplexity:
                 "total_tokens": [],
                 "filtered_tokens": [],
                 "ppls": [],
-                "probs": [],
                 "longest_sequences": [],
                 "sample_probs": [],
             }
@@ -83,18 +82,14 @@ class Perplexity:
 
             # check that each input is long enough:
             if add_start_token:
-                assert torch.all(
-                    torch.ge(attn_mask.sum(1), 1)
-                ), "Each input text must be at least one token long."
-                bos_tokens_tensor = torch.tensor(
-                    [[self.tokenizer.bos_token_id]] * encoded_batch.size(dim=0)
-                ).to(self.device)
+                assert torch.all(torch.ge(attn_mask.sum(1), 1)), "Each input text must be at least one token long."
+                bos_tokens_tensor = torch.tensor([[self.tokenizer.bos_token_id]] * encoded_batch.size(dim=0)).to(
+                    self.device
+                )
                 encoded_batch = torch.cat([bos_tokens_tensor, encoded_batch], dim=1)
                 attn_mask = torch.cat(
                     [
-                        torch.ones(bos_tokens_tensor.size(), dtype=torch.int64).to(
-                            self.device
-                        ),
+                        torch.ones(bos_tokens_tensor.size(), dtype=torch.int64).to(self.device),
                         attn_mask,
                     ],
                     dim=1,
@@ -115,46 +110,29 @@ class Perplexity:
                 shifted_labels = []
                 shifted_attn_mask = []
                 for i in range(self.batch_size):
-                    prompt_length = len(
-                        self.tokenizer.encode(prompts[i], add_special_tokens=False)
-                    )
-                    shifted_logits.append(
-                        out_logits[
-                            i, prompt_length : attn_mask[i].sum(), :
-                        ].contiguous()
-                    )
-                    shifted_labels.append(
-                        labels[i, prompt_length : attn_mask[i].sum()].contiguous()
-                    )
-                    shifted_attn_mask.append(
-                        attn_mask[i, prompt_length : attn_mask[i].sum()].contiguous()
-                    )
+                    prompt_length = len(self.tokenizer.encode(prompts[i], add_special_tokens=False))
+                    shifted_logits.append(out_logits[i, prompt_length : attn_mask[i].sum(), :].contiguous())
+                    shifted_labels.append(labels[i, prompt_length : attn_mask[i].sum()].contiguous())
+                    shifted_attn_mask.append(attn_mask[i, prompt_length : attn_mask[i].sum()].contiguous())
 
-                out_logits, labels, attn_mask = self._pad_tensors(
-                    shifted_logits, shifted_labels, shifted_attn_mask
-                )
+                out_logits, labels, attn_mask = self._pad_tensors(shifted_logits, shifted_labels, shifted_attn_mask)
 
             # Filter the tokens that has a probability higher than a threshold
             for idx, val in enumerate(thresholds):
-                (out_logits, labels, attn_mask), generated_probs, tt, ft, ls, gp = (
+                (temp_out_logits, temp_labels, temp_attn_mask), generated_probs, tt, ft, ls, gp = (
                     self._filter_on_threshold(out_logits, labels, attn_mask, val)
                 )
                 col[str(val)]["total_tokens"] += tt
                 col[str(val)]["filtered_tokens"] += ft
 
                 perplexity_batch = torch.exp(
-                    (loss_fct(out_logits.transpose(1, 2), labels) * attn_mask).sum(1)
-                    / attn_mask.sum(1)
+                    (loss_fct(temp_out_logits.transpose(1, 2), temp_labels) * temp_attn_mask).sum(1)
+                    / temp_attn_mask.sum(1)
                 )
                 col[str(val)]["ppls"] += perplexity_batch.tolist()
                 col[str(val)]["longest_sequences"] += ls
-                col[str(val)]["sample_probs"] += gp
-
-                # collect the token probabilities
                 if idx == 0:
-                    col[str(val)]["probs"] += generated_probs
-                else:
-                    del generated_probs
+                    col[str(val)]["sample_probs"] += gp
 
             # Collect garbage at the end of each batch
             gc.collect()
@@ -168,7 +146,6 @@ class Perplexity:
                 "filtered_token_percentage": sum(col[str(val)]["filtered_tokens"])
                 / (sum(col[str(val)]["total_tokens"]) + 1e-9),
                 "longest_filtered_sequences": col[str(val)]["longest_sequences"],
-                "probs": col[str(val)]["probs"],
                 "sample_probs": col[str(val)]["sample_probs"],
             }
 
@@ -213,9 +190,7 @@ class Perplexity:
         filtered_input_ids = []
         filtered_logits = []
         filtered_attention_mask = []
-        for input_sentence, input_probs, mask, logit in zip(
-            input_ids, gen_probs, attention_mask, logits
-        ):
+        for input_sentence, input_probs, mask, logit in zip(input_ids, gen_probs, attention_mask, logits):
             # For each input sentence get the tokens, logits filter the tokens that has a probability higher than a threshold
             input_ids_masked = input_sentence[mask == 1]
             logits_masked = logit[mask == 1]
@@ -231,24 +206,18 @@ class Perplexity:
             # collect the probabilities of the filtered tokens
             probs_collection += probs_masked.tolist()
             token_count.append(len(input_ids_masked))
-            filter_count.append(
-                len(input_ids_masked) - len(input_ids_masked[threshold_mask])
-            )
+            filter_count.append(len(input_ids_masked) - len(input_ids_masked[threshold_mask]))
             # count the longest sequence of filtered tokens
-            threshold_mask_str = "".join(
-                map(str, torch.tensor(threshold_mask, dtype=torch.int).tolist())
-            )
+            threshold_mask_str = "".join(map(str, torch.tensor(threshold_mask, dtype=torch.int).tolist()))
             longest_filtered_sequences.append(
                 max(map(len, threshold_mask_str.split("1")))
-                / (len(threshold_mask_str) + 1e-9)
+                / (len(threshold_mask_str) + (1e-9 if len(threshold_mask_str) == 0 else 0))
             )
 
         # filtered_input_ids has shape (batch_size, num_tokens), add the padding tokens so that it has the same shape as input_ids
         # filtered_logits has shape (batch_size, num_tokens, vocab_size), add the padding tokens so that it has the same shape as logits
         return (
-            self._pad_tensors(
-                filtered_logits, filtered_input_ids, filtered_attention_mask
-            ),
+            self._pad_tensors(filtered_logits, filtered_input_ids, filtered_attention_mask),
             probs_collection,
             token_count,
             filter_count,
@@ -281,17 +250,13 @@ class Perplexity:
             labels[i] = torch.cat(
                 [
                     labels[i][attn_mask[i] == 1],
-                    torch.full(
-                        (num_pad,), self.tokenizer.pad_token_id, dtype=torch.long
-                    ).to(self.device),
+                    torch.full((num_pad,), self.tokenizer.pad_token_id, dtype=torch.long).to(self.device),
                 ]
             )
             logits[i] = torch.cat(
                 [
                     logits[i][attn_mask[i] == 1, :],
-                    torch.full(
-                        (num_pad, logits[0].shape[-1]), 0, dtype=torch.float32
-                    ).to(self.device),
+                    torch.full((num_pad, logits[0].shape[-1]), 0, dtype=torch.float32).to(self.device),
                 ]
             )
         return torch.stack(logits), torch.stack(labels), torch.stack(new_attn_mask)

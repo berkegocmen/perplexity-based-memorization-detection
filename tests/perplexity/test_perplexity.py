@@ -104,5 +104,4 @@ class TestPerplexity:
         assert len(results["1.01"]["perplexities"]) == 3
         assert type(results["1.01"]["filtered_token_percentage"]) == float
         assert len(results["1.01"]["longest_filtered_sequences"]) == 3
-        assert type(results["1.01"]["probs"]) == list
         assert len(results["1.01"]["sample_probs"]) == 3
