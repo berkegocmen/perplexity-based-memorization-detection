@@ -77,7 +77,7 @@ class ExperimentPipeline:
             new_columns = list(
                 itertools.chain.from_iterable(
                     [
-                        [f"{threshold}_perplexity", f"{threshold}_longest_filtered_sequences"]
+                        [f"{threshold}_perplexity", f"{threshold}_longest_filtered_sequence"]
                         for threshold in self.config.perplexity.thresholds
                     ]
                 )
@@ -114,7 +114,7 @@ class ExperimentPipeline:
                 new_columns = list(
                     itertools.chain.from_iterable(
                         [
-                            [f"{threshold}_source_perplexity", f"{threshold}_source_longest_filtered_sequences"]
+                            [f"{threshold}_source_perplexity", f"{threshold}_source_longest_filtered_sequence"]
                             for threshold in self.config.perplexity.thresholds
                         ]
                     )
