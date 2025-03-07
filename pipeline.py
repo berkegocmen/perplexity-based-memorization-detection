@@ -47,7 +47,7 @@ class ExperimentPipeline:
             df["generated_code"] = None
             languages = df["language"].unique()
             for language in languages:
-                logger.info("Generating code for language: {language}")
+                logger.info(f"Generating code for language: {language}")
                 prompts = df[df["language"] == language]["prompt"].tolist()
                 results = generator.generate_text_with_chat_template(prompts, language=language)
 
