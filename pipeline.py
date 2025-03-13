@@ -4,6 +4,7 @@ import os
 
 import pandas as pd
 from transformers import AutoModelForCausalLM, AutoTokenizer
+import torch
 
 from configuration import ExperimentConfig
 from generation import CodeGenerator
@@ -27,6 +28,7 @@ class ExperimentPipeline:
             self.config.model_load.model_name,
             device_map="auto",
             quantization_config=self.config.model_load.quantization_config,
+            torch_dtype=torch.bfloat16,
         )
         tokenizer = AutoTokenizer.from_pretrained(self.config.model_load.model_name)
 
@@ -56,6 +58,7 @@ class ExperimentPipeline:
                     df.at[idx, "prediction"] = result.complete_code
                     df.at[idx, "generated_code"] = result.generated_code
             self.config.dataset = df
+            df.to_csv(self.config.save_path + "generated_code.csv", index=False)
 
         if self.config.perplexity:
             logger.info("Running perplexity calculation")
