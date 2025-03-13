@@ -58,7 +58,7 @@ class Perplexity:
         col = {}
         for val in thresholds:
             col[str(val)] = {
-                "total_tokens": [],
+                    "total_tokens": [],
                 "filtered_tokens": [],
                 "ppls": [],
                 "longest_sequences": [],
@@ -66,6 +66,7 @@ class Perplexity:
             }
 
         for start_index in logging.tqdm(range(0, len(predictions), self.batch_size)):
+            print(f"Index: {start_index}")
             try:
                 end_index = min(start_index + self.batch_size, len(predictions))
 

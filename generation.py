@@ -2,13 +2,10 @@ import gc
 import re
 
 import torch
-import weave
 from transformers import (
     pipeline,
     GenerationConfig,
-    AutoModelForCausalLM,
     BitsAndBytesConfig,
-    AutoTokenizer,
     PreTrainedTokenizer,
     PreTrainedModel,
 )
@@ -119,6 +116,7 @@ class CodeGenerator:
                 prompts,
             )
         ):
+            print(f"Status: {idx}/{len(prompts)}")
             # extract the code from the generated text
             response = result[0]["generated_text"].split("### Response")[-1]
             # separate prompt and the generated code

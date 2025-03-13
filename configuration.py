@@ -50,21 +50,19 @@ class ExperimentConfig(ConfigBaseModel):
                     if config["model_load"]["quantization"]["enabled"]
                     else None
                 ),
-                device= config['model_load'].get('device', None)
+                device=config["model_load"].get("device", None),
             ),
-            code_generation=CodeGenerationConfig(
-                batch_size=config["code_generation"]["params"]["batch_size"],
-                generation_config=(
-                    GenerationConfig(
-                        **config["code_generation"]["params"]["generation_config"]
-                    )
-                    if config["code_generation"]["enabled"]
-                    else None
-                ),
-                chat_template=(
-                    # if chat_template exist in the keys else None
-                    config["code_generation"].get("chat_template", None)
-                ),
+            code_generation=(
+                CodeGenerationConfig(
+                    batch_size=config["code_generation"]["params"]["batch_size"],
+                    generation_config=(GenerationConfig(**config["code_generation"]["params"]["generation_config"])),
+                    chat_template=(
+                        # if chat_template exist in the keys else None
+                        config["code_generation"].get("chat_template", None)
+                    ),
+                )
+                if config["code_generation"]["enabled"]
+                else None
             ),
             perplexity=(
                 PerplexityConfig(
@@ -77,3 +75,4 @@ class ExperimentConfig(ConfigBaseModel):
             dataset=pd.read_csv(config["dataset"]),
             save_path=config["save_path"],
         )
+

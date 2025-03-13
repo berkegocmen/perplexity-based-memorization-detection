@@ -1,4 +1,4 @@
-experiment_name: "generate_code_for_licoeval_prompts_with_starcoder_04_25"
+experiment_name: "generate_code_for_licoeval_prompts_with_starcoder_04_25_pt2"
 model_load:
   model_name:  "bigcode/starcoder2-15b-instruct-v0.1"
   device: "cuda"
@@ -10,17 +10,17 @@ model_load:
 code_generation:
   enabled: true
   params:
-    batch_size: 16
+    batch_size: 1
     generation_config:
-      max_new_tokens: 1024
+      max_new_tokens: 512
       use_cache: false
 perplexity:
   enabled: true
   params:
-    batch_size: 16
+    batch_size: 8
     thresholds: [ 1.01, 0.999, 0.99, 0.98, 0.97, 0.96, 0.95, 0.9, 0.8, 0.7, 0.6, 0.5 ]
-dataset: "data/licoeval.csv"
-save_path: "results/generate_code_for_licoeval_prompts_with_starcoder_04_25"
+dataset: "data/licoeval2.csv"
+save_path: "results/generate_code_for_licoeval_prompts_with_starcoder_04_25_pt2"
 
 
 

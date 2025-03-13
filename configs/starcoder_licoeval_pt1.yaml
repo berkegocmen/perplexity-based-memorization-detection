@@ -1,0 +1,28 @@
+experiment_name: "generate_code_for_licoeval_prompts_with_starcoder_04_25_pt1"
+model_load:
+  model_name:  "bigcode/starcoder2-15b-instruct-v0.1"
+  device: "cuda"
+  quantization:
+    enabled: false
+    params:
+      load_in_8bit: true
+      load_in_4bit: false
+code_generation:
+  enabled: true
+  params:
+    batch_size: 1
+    generation_config:
+      max_new_tokens: 512
+      use_cache: false
+perplexity:
+  enabled: true
+  params:
+    batch_size: 8
+    thresholds: [ 1.01, 0.999, 0.99, 0.98, 0.97, 0.96, 0.95, 0.9, 0.8, 0.7, 0.6, 0.5 ]
+dataset: "data/licoeval1.csv"
+save_path: "results/generate_code_for_licoeval_prompts_with_starcoder_04_25_pt1"
+
+
+
+
+
