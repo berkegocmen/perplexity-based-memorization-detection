@@ -2,8 +2,7 @@ from unittest.mock import MagicMock, patch
 
 from transformers import GenerationConfig, AutoTokenizer, AutoModelForCausalLM
 
-from generation import CodeGenerator
-from perplexity.base import GeneratedCode
+from generation import CodeGenerator, GeneratedCode
 
 
 class TestCodeGenerator:

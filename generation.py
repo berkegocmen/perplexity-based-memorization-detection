@@ -2,6 +2,7 @@ import gc
 import re
 
 import torch
+from pydantic import BaseModel
 from transformers import (
     pipeline,
     GenerationConfig,
@@ -10,7 +11,6 @@ from transformers import (
     PreTrainedModel,
 )
 
-from perplexity.base import GeneratedCode
 from evaluate import logging
 
 from utils import ListDataset
@@ -28,6 +28,16 @@ Here's how you can complete the function:
 ```{language}
 {{{{ messages }}}}
 """
+
+
+class GeneratedCode(BaseModel):
+    prompt: str
+    generated_code: str
+
+    # complete code as prompt + generated code
+    @property
+    def complete_code(self):
+        return self.prompt + self.generated_code
 
 
 class CodeGenerator:
