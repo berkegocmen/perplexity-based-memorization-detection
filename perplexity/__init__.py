@@ -140,6 +140,7 @@ class Perplexity:
                 gc.collect()
                 torch.cuda.empty_cache()
             except RuntimeError as e:
+                print(f"Error: {e}")
                 for idx, val in enumerate(thresholds):
                     col[str(val)]["ppls"] += [np.nanmean(col[str(val)]["ppls"])] * self.batch_size
                     col[str(val)]["longest_sequences"] += [np.nanmean(col[str(val)]["longest_sequences"])] * self.batch_size
