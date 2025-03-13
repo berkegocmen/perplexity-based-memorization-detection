@@ -63,9 +63,7 @@ class CodeGenerator:
 
     def generate_code(self, prompt):
         # Tokenize and get both input_ids and attention_mask
-        encodings = self.tokenizer(
-            prompt, return_tensors="pt", return_attention_mask=True
-        ).to(self.device)
+        encodings = self.tokenizer(prompt, return_tensors="pt", return_attention_mask=True).to(self.device)
         input_ids = encodings["input_ids"]
         attention_mask = encodings["attention_mask"]
         outputs = self.model.generate(
@@ -76,17 +74,13 @@ class CodeGenerator:
         )
         return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-    def generate_text_with_chat_template(
-        self, prompts: list[str], language: str
-    ) -> list[GeneratedCode]:
+    def generate_text_with_chat_template(self, prompts: list[str], language: str) -> list[GeneratedCode]:
         results = []
         # regex pattern to extract the code from the generated text
         pattern = rf"```{language}\n(.*?)\n```"
 
         # apply the chat template to the tokenizer and the prompts
-        self.tokenizer.chat_template = self.generation_template.format(
-            language=language
-        )
+        self.tokenizer.chat_template = self.generation_template.format(language=language)
 
         teminators = [
             self.generation_pipeline.tokenizer.eos_token_id,
@@ -95,9 +89,7 @@ class CodeGenerator:
 
         # apply the chat template to the prompts
         instructions = [
-            self.generation_pipeline.tokenizer.apply_chat_template(
-                prompt, tokenize=False, add_generation_prompt="True"
-            )
+            self.generation_pipeline.tokenizer.apply_chat_template(prompt, tokenize=False, add_generation_prompt="True")
             for prompt in prompts
         ]
 
@@ -130,11 +122,7 @@ class CodeGenerator:
             else:
                 code = response.split(f"```{language}")[-1].lstrip()
 
-            results.append(
-                GeneratedCode(
-                    prompt=prompt, generated_code=code[len(prompt.lstrip()) :]
-                )
-            )
+            results.append(GeneratedCode(prompt=prompt, generated_code=code[len(prompt.lstrip()) :]))
 
             # collect garbage
             gc.collect()
