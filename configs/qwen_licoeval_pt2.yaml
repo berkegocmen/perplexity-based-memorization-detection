@@ -1,0 +1,25 @@
+define: &name "generate_code_for_licoeval_prompts_with_qwen_18_03_25_pt2"
+
+experiment_name: *name
+model_load:
+  model_name:  "Qwen/Qwen2.5-Coder-14B-Instruct"
+  device: "cuda"
+  quantization:
+    enabled: false
+    params:
+      load_in_8bit: true
+      load_in_4bit: false
+code_generation:
+  enabled: true
+  params:
+    batch_size: 1
+    generation_config:
+      max_new_tokens: 1024
+      use_cache: false
+perplexity:
+  enabled: true
+  params:
+    batch_size: 1
+    thresholds: [ 1.01, 0.999, 0.99, 0.98, 0.97, 0.96, 0.95, 0.9, 0.8, 0.7, 0.6, 0.5 ]
+dataset: "data/licoeval2.csv"
+save_path: "results/" + *name
