@@ -107,8 +107,8 @@ class Perplexity:
                 with torch.no_grad():
                     out_logits = self.model(encoded_batch, attention_mask=attn_mask).logits
 
-                logging.DEBUG("shape of encoded_batch: ", encoded_batch.shape)
-                logging.DEBUG("shape of attn_mask: ", attn_mask.shape)
+                print("shape of encoded_batch: ", encoded_batch.shape)
+                print("shape of attn_mask: ", attn_mask.shape)
 
                 if prompts:
                     # shift the logits and labels to exclude the prompt
@@ -123,8 +123,8 @@ class Perplexity:
 
                     out_logits, labels, attn_mask = self._pad_tensors(shifted_logits, shifted_labels, shifted_attn_mask)
 
-                    logging.DEBUG("shape of out_logits after shifting: ", out_logits.shape)
-                    logging.DEBUG("shape of labels after shifting: ", labels.shape)
+                    print("shape of out_logits after shifting: ", out_logits.shape)
+                    print("shape of labels after shifting: ", labels.shape)
 
                 # Filter the tokens that has a probability higher than a threshold
                 for idx, val in enumerate(thresholds):
