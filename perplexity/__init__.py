@@ -18,6 +18,7 @@ class Perplexity:
         self.model = model
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.tokenizer.bos_token = self.tokenizer.bos_token or self.tokenizer.eos_token
 
         if device is not None:
             assert device in [
