@@ -4,6 +4,7 @@ import torch
 from torch.nn import CrossEntropyLoss
 import gc
 from evaluate import logging
+import traceback
 
 
 class Perplexity:
@@ -147,6 +148,7 @@ class Perplexity:
                 torch.cuda.empty_cache()
             except RuntimeError as e:
                 print(f"Error: {e}")
+                print(f"Traceback: {traceback.format_exc()}")
                 for idx, val in enumerate(thresholds):
                     col[str(val)]["ppls"] += [np.nanmean(col[str(val)]["ppls"])] * self.batch_size
                     col[str(val)]["longest_sequences"] += [
