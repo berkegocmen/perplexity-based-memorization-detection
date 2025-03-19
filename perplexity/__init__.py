@@ -58,7 +58,7 @@ class Perplexity:
         col = {}
         for val in thresholds:
             col[str(val)] = {
-                    "total_tokens": [],
+                "total_tokens": [],
                 "filtered_tokens": [],
                 "ppls": [],
                 "longest_sequences": [],
@@ -106,6 +106,9 @@ class Perplexity:
                 with torch.no_grad():
                     out_logits = self.model(encoded_batch, attention_mask=attn_mask).logits
 
+                logging.DEBUG("shape of encoded_batch: ", encoded_batch.shape)
+                logging.DEBUG("shape of attn_mask: ", attn_mask.shape)
+
                 if prompts:
                     # shift the logits and labels to exclude the prompt
                     shifted_logits = []
@@ -118,6 +121,9 @@ class Perplexity:
                         shifted_attn_mask.append(attn_mask[i, prompt_length : attn_mask[i].sum()].contiguous())
 
                     out_logits, labels, attn_mask = self._pad_tensors(shifted_logits, shifted_labels, shifted_attn_mask)
+
+                    logging.DEBUG("shape of out_logits after shifting: ", out_logits.shape)
+                    logging.DEBUG("shape of labels after shifting: ", labels.shape)
 
                 # Filter the tokens that has a probability higher than a threshold
                 for idx, val in enumerate(thresholds):
@@ -143,7 +149,9 @@ class Perplexity:
                 print(f"Error: {e}")
                 for idx, val in enumerate(thresholds):
                     col[str(val)]["ppls"] += [np.nanmean(col[str(val)]["ppls"])] * self.batch_size
-                    col[str(val)]["longest_sequences"] += [np.nanmean(col[str(val)]["longest_sequences"])] * self.batch_size
+                    col[str(val)]["longest_sequences"] += [
+                        np.nanmean(col[str(val)]["longest_sequences"])
+                    ] * self.batch_size
                     col[str(val)]["sample_probs"] += [[0]] * self.batch_size
 
         results = {}
