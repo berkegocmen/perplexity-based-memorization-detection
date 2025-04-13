@@ -1,0 +1,23 @@
+experiment_name: "generate_lgpl_code_codeipprompts_with_deepseek_13_04_25"
+model_load:
+  model_name:  "deepseek-ai/deepseek-coder-6.7b-instruct"
+  device: "cuda"
+  quantization:
+    enabled: false
+    params:
+      load_in_8bit: true
+      load_in_4bit: false
+code_generation:
+  enabled: true
+  params:
+    batch_size: 1
+    generation_config:
+      max_new_tokens: 2048
+      use_cache: false
+perplexity:
+  enabled: true
+  params:
+    batch_size: 1
+    thresholds: [ 1.01, 0.999, 0.99, 0.98, 0.97, 0.96, 0.95, 0.9, 0.8, 0.7, 0.6, 0.5 ]
+dataset: "data/lgpl5000.csv"
+save_path: "results/generate_lgpl_code_codeipprompts_with_deepseek_13_04_25"
