@@ -113,11 +113,12 @@ class Perplexity:
 
                 if prompts:
                     # shift the logits and labels to exclude the prompt
+                    batch_prompt = prompts[start_index:end_index]
                     shifted_logits = []
                     shifted_labels = []
                     shifted_attn_mask = []
                     for i in range(self.batch_size):
-                        prompt_length = len(self.tokenizer.encode(prompts[i], add_special_tokens=False))
+                        prompt_length = len(self.tokenizer.encode(batch_prompt[i], add_special_tokens=False))
                         shifted_logits.append(out_logits[i, prompt_length : attn_mask[i].sum(), :].contiguous())
                         shifted_labels.append(labels[i, prompt_length : attn_mask[i].sum()].contiguous())
                         shifted_attn_mask.append(attn_mask[i, prompt_length : attn_mask[i].sum()].contiguous())
