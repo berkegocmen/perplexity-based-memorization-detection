@@ -19,6 +19,7 @@ perplexity:
   params:
     batch_size: 1
     thresholds: [ 1.01, 0.999, 0.99, 0.98, 0.97, 0.96, 0.95, 0.9, 0.8, 0.7, 0.6, 0.5 ]
+    tfidf_enabled: true
 dataset: "tests/data/test.csv"
 save_path: "tests/data/test_experiment_cuda"
 

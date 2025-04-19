@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 import numpy as np
 from torch import Tensor
 import torch
@@ -14,11 +16,13 @@ class Perplexity:
         tokenizer,
         device: str | None = None,
         batch_size: int = 1,
+        tfidf: dict | None = None,
     ):
         self.model = model
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.tokenizer.bos_token = self.tokenizer.bos_token or self.tokenizer.eos_token
+        self.tfidf = tfidf if tfidf is not None else defaultdict(lambda: 1)
 
         if device is not None:
             assert device in [
@@ -108,8 +112,6 @@ class Perplexity:
                 with torch.no_grad():
                     out_logits = self.model(encoded_batch, attention_mask=attn_mask).logits
 
-                print("shape of encoded_batch: ", encoded_batch.shape)
-                print("shape of attn_mask: ", attn_mask.shape)
 
                 if prompts:
                     # shift the logits and labels to exclude the prompt
@@ -136,8 +138,14 @@ class Perplexity:
                     col[str(val)]["total_tokens"] += tt
                     col[str(val)]["filtered_tokens"] += ft
 
+                    tfidf_weights = torch.tensor(
+                        [[self.tfidf[token_id.item()] for token_id in sentence] for sentence in temp_labels],
+                        dtype=torch.float32,
+                        device=self.device,
+                    )
+
                     perplexity_batch = torch.exp(
-                        (loss_fct(temp_out_logits.transpose(1, 2), temp_labels) * temp_attn_mask).sum(1)
+                        (loss_fct(temp_out_logits.transpose(1, 2), temp_labels) * temp_attn_mask * tfidf_weights).sum(1)
                         / temp_attn_mask.sum(1)
                     )
                     col[str(val)]["ppls"] += perplexity_batch.tolist()

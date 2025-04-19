@@ -9,6 +9,7 @@ import torch
 from configuration import ExperimentConfig
 from generation import CodeGenerator
 from perplexity import Perplexity
+from perplexity.tfidf import compute_tfidf_for_vocab
 
 logger = logging.getLogger(__name__)
 
@@ -63,12 +64,18 @@ class ExperimentPipeline:
         if self.config.perplexity:
             logger.info("Running perplexity calculation")
             # use the generation results to calculate perplexity if code generation step is run before
+            tfidf = None
+            if self.config.perplexity.tfidf_enabled:
+                # calculate tfidf for the dataset
+                logger.info("Calculating TF-IDF for the dataset")
+                tfidf = compute_tfidf_for_vocab(self.config.dataset["prediction"].tolist(), tokenizer)
 
             perplexity = Perplexity(
                 model=model,
                 tokenizer=tokenizer,
                 device=self.config.model_load.device,
                 batch_size=self.config.perplexity.batch_size,
+                tfidf=tfidf,
             )
 
             perplexity_results = perplexity.compute(

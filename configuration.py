@@ -25,6 +25,7 @@ class CodeGenerationConfig(ConfigBaseModel):
 class PerplexityConfig(ConfigBaseModel):
     thresholds: list[float | int]
     batch_size: int = 1
+    tfidf_enabled: bool = False
 
 
 class ExperimentConfig(ConfigBaseModel):
@@ -68,6 +69,7 @@ class ExperimentConfig(ConfigBaseModel):
                 PerplexityConfig(
                     batch_size=config["perplexity"]["params"]["batch_size"],
                     thresholds=config["perplexity"]["params"]["thresholds"],
+                    tfidf_enabled=config["perplexity"]["params"]["tfidf_enabled"],
                 )
                 if config["perplexity"]["enabled"]
                 else None
