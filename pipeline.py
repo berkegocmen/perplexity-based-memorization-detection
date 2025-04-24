@@ -91,7 +91,7 @@ class ExperimentPipeline:
                         for threshold in self.config.perplexity.thresholds
                     ]
                 )
-            ) + ["token_probabilities"]
+            ) + ["token_probabilities", "tfidf_scaled_token_probabilities"]
 
             # add the columns to the dataset
             for column in new_columns:
@@ -108,10 +108,13 @@ class ExperimentPipeline:
                     self.config.dataset.at[idx, f"{threshold}_perplexity"] = perp
                     self.config.dataset.at[idx, f"{threshold}_longest_filtered_sequence"] = ls
 
-            for idx, gp in zip(
-                self.config.dataset.index, perplexity_results[str(self.config.perplexity.thresholds[0])]["sample_probs"]
+            for idx, gp, sgp in zip(
+                self.config.dataset.index,
+                perplexity_results[str(self.config.perplexity.thresholds[0])]["sample_probs"],
+                perplexity_results[str(self.config.perplexity.thresholds[0])]["tfidf_scaled_sample_probs"],
             ):
                 self.config.dataset.at[idx, "token_probabilities"] = gp
+                self.config.dataset.at[idx, "tfidf_scaled_token_probabilities"] = sgp
 
             source_filtered_token_percentages = []
             if "source" in self.config.dataset.columns:
