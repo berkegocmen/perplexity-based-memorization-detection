@@ -69,6 +69,7 @@ class Perplexity:
                 "ppls": [],
                 "longest_sequences": [],
                 "sample_probs": [],
+                "tfidf_scaled_sample_probs": [],
             }
 
         for start_index in logging.tqdm(range(0, len(predictions), self.batch_size)):
@@ -112,7 +113,6 @@ class Perplexity:
                 with torch.no_grad():
                     out_logits = self.model(encoded_batch, attention_mask=attn_mask).logits
 
-
                 if prompts:
                     # shift the logits and labels to exclude the prompt
                     batch_prompt = prompts[start_index:end_index]
@@ -144,6 +144,11 @@ class Perplexity:
                         device=self.device,
                     )
 
+                    # Compute tfidf_scaled_probs
+                    scaled_probs = Tensor(gp.copy())
+                    if val == 1.01:
+                        scaled_probs = (scaled_probs * tfidf_weights).tolist()
+
                     perplexity_batch = torch.exp(
                         (loss_fct(temp_out_logits.transpose(1, 2), temp_labels) * temp_attn_mask * tfidf_weights).sum(1)
                         / temp_attn_mask.sum(1)
@@ -152,6 +157,7 @@ class Perplexity:
                     col[str(val)]["longest_sequences"] += ls
                     if idx == 0:
                         col[str(val)]["sample_probs"] += gp
+                        col[str(val)]["tfidf_scaled_sample_probs"] += scaled_probs
 
                 # Collect garbage at the end of each batch
                 gc.collect()
@@ -165,6 +171,7 @@ class Perplexity:
                         np.nanmean(col[str(val)]["longest_sequences"])
                     ] * self.batch_size
                     col[str(val)]["sample_probs"] += [[0]] * self.batch_size
+                    col[str(val)]["tfidf_scaled_sample_probs"] += [0] * self.batch_size
 
         results = {}
         for val in thresholds:
@@ -175,6 +182,7 @@ class Perplexity:
                 / (sum(col[str(val)]["total_tokens"]) + 1e-9),
                 "longest_filtered_sequences": col[str(val)]["longest_sequences"],
                 "sample_probs": col[str(val)]["sample_probs"],
+                "tfidf_scaled_sample_probs": col[str(val)]["tfidf_scaled_sample_probs"],
             }
 
         return results
