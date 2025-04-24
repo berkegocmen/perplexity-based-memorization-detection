@@ -145,7 +145,7 @@ class Perplexity:
                     )
 
                     # Compute tfidf_scaled_probs
-                    scaled_probs = Tensor(gp.copy())
+                    scaled_probs = torch.tensor(gp.copy(), device=self.device)
                     if val == 1.01:
                         scaled_probs = (scaled_probs * tfidf_weights).tolist()
 
